@@ -1,0 +1,16 @@
+# R
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+*.Rcheck/
+
+# Output / cache
+output/
+.cache/
+renv/library/
+renv/.cache/
+
+# OS
+.DS_Store
+Thumbs.db

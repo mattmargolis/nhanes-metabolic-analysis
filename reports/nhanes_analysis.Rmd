@@ -1,0 +1,245 @@
+---
+title: "Metabolic Disease in Normal-Weight Adults"
+subtitle: "Metabolically Unhealthy Normal Weight (MUNW) Analysis — NHANES 2017–2022"
+author: ""
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    theme: flatly
+    code_folding: hide
+    fig_width: 8
+    fig_height: 5
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+library(dplyr)
+library(ggplot2)
+library(survey)
+library(tidyr)
+library(knitr)
+library(kableExtra)
+```
+
+## Background
+
+"Metabolically Unhealthy Normal Weight" (MUNW) describes individuals with a
+**BMI in the healthy range (18.5–24.9 kg/m²)** who nonetheless have one or
+more metabolic abnormalities — a phenomenon increasingly recognised as a
+clinically important cardiovascular risk phenotype.
+
+This analysis uses two NHANES cycles (**2017–2018** and **2021–2022**) to
+estimate the prevalence and co-occurrence of four metabolic conditions in
+normal-weight U.S. adults, and compare cardiometabolic profiles between MUNW
+and metabolically healthy normal-weight (MHNW) individuals.
+
+> **Note:** The 2019–2020 cycle is excluded because data collection was
+> severely curtailed by COVID-19 and the sample is not nationally
+> representative for all subgroups.
+
+---
+
+## Methods
+
+### Data source
+
+National Health and Nutrition Examination Survey (NHANES), conducted by the
+CDC's National Center for Health Statistics (NCHS). The `nhanesA` R package
+was used to download public-use files directly from the CDC FTP server.
+
+### Inclusion criteria
+
+- Age ≥ 18 years
+- BMI 18.5–24.9 kg/m² (WHO "normal weight")
+- Non-missing BMI
+
+### Metabolic condition definitions
+
+| Condition | Criterion |
+|---|---|
+| **Type 2 Diabetes (T2DM)** | HbA1c ≥ 6.5% *or* fasting glucose ≥ 126 mg/dL *or* self-reported diagnosis/insulin use |
+| **Hypertension** | Mean SBP ≥ 130 *or* DBP ≥ 80 mmHg (AHA 2017) *or* self-reported diagnosis *or* antihypertensive medication |
+| **Dyslipidemia** | LDL-C ≥ 130 mg/dL *or* HDL-C < 40 (men)/50 (women) mg/dL *or* triglycerides ≥ 150 mg/dL |
+| **Metabolic Syndrome** | ≥ 3 of 5 NCEP ATP III criteria (waist, triglycerides, HDL, BP, fasting glucose) |
+| **Any metabolic condition (MUNW)** | At least one of the above |
+
+### Statistical analysis
+
+All estimates are survey-weighted using NHANES complex survey design
+(`survey` package). Two-year MEC weights were divided by the number of cycles
+(2) to generate combined weights.
+
+---
+
+## Results
+
+```{r load-data}
+df <- readRDS(here::here("output", "nhanes_metabolic_flagged.rds"))
+
+df <- df %>% mutate(wt_adj = wt_full / 2)
+
+svy <- svydesign(
+  id      = ~sdmvpsu,
+  strata  = ~sdmvstra,
+  weights = ~wt_adj,
+  nest    = TRUE,
+  data    = df %>% filter(!is.na(wt_adj) & wt_adj > 0)
+)
+```
+
+### Sample characteristics
+
+```{r sample-table}
+df %>%
+  summarise(
+    `N (unweighted)`     = n(),
+    `Age, mean (SD)`     = paste0(round(mean(age, na.rm=T),1), " (", round(sd(age,na.rm=T),1), ")"),
+    `Female, %`          = paste0(round(mean(sex=="Female", na.rm=T)*100,1),"%"),
+    `BMI, mean (SD)`     = paste0(round(mean(bmi,na.rm=T),1)," (", round(sd(bmi,na.rm=T),1),")"),
+    `Waist (cm), mean`   = round(mean(waist_cm,na.rm=T),1)
+  ) %>%
+  pivot_longer(everything(), names_to="Characteristic", values_to="Value") %>%
+  kable(caption="Table 1. Sample characteristics (unweighted summary)") %>%
+  kable_styling(bootstrap_options=c("striped","hover"), full_width=FALSE)
+```
+
+### Prevalence of metabolic conditions
+
+```{r prevalence}
+conditions <- c("t2dm", "hypertension", "dyslipidemia", "met_syndrome", "any_metabolic")
+labels     <- c("T2DM", "Hypertension", "Dyslipidemia", "Metabolic Syndrome", "Any condition (MUNW)")
+
+prev_table <- purrr::map2_dfr(conditions, labels, function(cond, lab) {
+  p <- svymean(as.formula(paste0("~", cond)), svy, na.rm = TRUE)
+  data.frame(
+    Condition  = lab,
+    `Prevalence (%)` = round(coef(p)[2] * 100, 1),
+    `95% CI`   = paste0(round((coef(p)[2] - 1.96*SE(p)[2])*100, 1), "–",
+                        round((coef(p)[2] + 1.96*SE(p)[2])*100, 1))
+  )
+})
+
+kable(prev_table,
+      caption="Table 2. Weighted prevalence of metabolic conditions in normal-weight adults") %>%
+  kable_styling(bootstrap_options=c("striped","hover"), full_width=FALSE)
+```
+
+```{r fig-prevalence, fig.cap="Figure 1. Weighted prevalence with 95% CI"}
+prev_table %>%
+  filter(Condition != "Any condition (MUNW)") %>%
+  mutate(prev = as.numeric(`Prevalence (%)`),
+         ci_lo = as.numeric(sub("–.*", "", `95% CI`)),
+         ci_hi = as.numeric(sub(".*–", "", `95% CI`))) %>%
+  ggplot(aes(x = reorder(Condition, -prev), y = prev)) +
+  geom_col(fill="#2c7bb6", width=0.6) +
+  geom_errorbar(aes(ymin=ci_lo, ymax=ci_hi), width=0.2) +
+  geom_text(aes(label=paste0(prev,"%")), vjust=-1.2, size=3.5) +
+  labs(title="Metabolic Conditions in Normal-Weight U.S. Adults",
+       subtitle="NHANES 2017–2018 & 2021–2022 (survey-weighted)",
+       x=NULL, y="Prevalence (%)") +
+  theme_minimal(base_size=13) +
+  theme(axis.text.x=element_text(angle=15, hjust=1))
+```
+
+### Prevalence by sex
+
+```{r prev-sex}
+prev_sex <- svyby(~t2dm + hypertension + dyslipidemia + met_syndrome,
+                  ~sex, svy, svymean, na.rm=TRUE)
+
+as.data.frame(prev_sex) %>%
+  select(sex, t2dm, hypertension, dyslipidemia, met_syndrome) %>%
+  mutate(across(where(is.numeric), ~round(.*100, 1))) %>%
+  rename(Sex=sex, `T2DM (%)`=t2dm, `HTN (%)`=hypertension,
+         `Dyslip (%)`=dyslipidemia, `MetSyn (%)`=met_syndrome) %>%
+  kable(caption="Table 3. Prevalence (%) by sex") %>%
+  kable_styling(bootstrap_options=c("striped","hover"), full_width=FALSE)
+```
+
+### MUNW vs MHNW: cardiometabolic profile
+
+```{r munw-comparison}
+df %>%
+  filter(!is.na(any_metabolic)) %>%
+  mutate(group = ifelse(any_metabolic, "MUNW", "MHNW")) %>%
+  group_by(group) %>%
+  summarise(
+    n            = n(),
+    `Age`        = round(mean(age, na.rm=T), 1),
+    `BMI`        = round(mean(bmi, na.rm=T), 1),
+    `Waist (cm)` = round(mean(waist_cm, na.rm=T), 1),
+    `HbA1c (%)`  = round(mean(hba1c, na.rm=T), 1),
+    `SBP (mmHg)` = round(mean(sbp_mean, na.rm=T), 1),
+    `DBP (mmHg)` = round(mean(dbp_mean, na.rm=T), 1),
+    `HDL-C`      = round(mean(hdl_c, na.rm=T), 1),
+    `LDL-C`      = round(mean(ldl_c, na.rm=T), 1),
+    `TG`         = round(mean(triglycerides, na.rm=T), 1)
+  ) %>%
+  pivot_longer(-group) %>%
+  pivot_wider(names_from=group) %>%
+  kable(caption="Table 4. Cardiometabolic profile: MUNW vs MHNW (unweighted means)") %>%
+  kable_styling(bootstrap_options=c("striped","hover"), full_width=FALSE)
+```
+
+```{r fig-bmi-density, fig.cap="Figure 2. BMI distribution by metabolic health status"}
+df %>%
+  filter(!is.na(any_metabolic)) %>%
+  mutate(group = ifelse(any_metabolic, "MUNW", "MHNW")) %>%
+  ggplot(aes(x=bmi, fill=group, colour=group)) +
+  geom_density(alpha=0.4) +
+  scale_fill_manual(values=c("MHNW"="#1a9641","MUNW"="#d7191c")) +
+  scale_colour_manual(values=c("MHNW"="#1a9641","MUNW"="#d7191c")) +
+  labs(title="BMI Distribution by Metabolic Health Status",
+       x="BMI (kg/m²)", y="Density", fill=NULL, colour=NULL) +
+  theme_minimal(base_size=13)
+```
+
+### Condition co-occurrence
+
+```{r fig-heatmap, fig.cap="Figure 3. Correlation between metabolic conditions"}
+cond_cols <- c("t2dm","hypertension","dyslipidemia","met_syndrome")
+co_cor <- cor(df[, cond_cols] %>% mutate(across(everything(), as.integer)),
+              use="pairwise.complete.obs")
+co_long <- as.data.frame(as.table(co_cor)) %>%
+  rename(cond1=Var1, cond2=Var2, r=Freq) %>%
+  mutate(across(c(cond1,cond2), ~recode(.,
+    "t2dm"="T2DM","hypertension"="HTN",
+    "dyslipidemia"="Dyslipidemia","met_syndrome"="MetSyn")))
+
+ggplot(co_long, aes(cond1, cond2, fill=r)) +
+  geom_tile(colour="white") +
+  geom_text(aes(label=round(r,2)), size=3.5) +
+  scale_fill_gradient2(low="#4575b4", mid="white", high="#d73027",
+                       midpoint=0, limits=c(-1,1)) +
+  labs(title="Correlation Between Metabolic Conditions",
+       x=NULL, y=NULL, fill="r") +
+  theme_minimal(base_size=13) +
+  theme(axis.text.x=element_text(angle=30, hjust=1))
+```
+
+---
+
+## Discussion
+
+These findings illustrate that a substantial proportion of normal-weight
+U.S. adults harbour at least one metabolic abnormality — the MUNW phenotype.
+This is clinically important because standard BMI-based screening would
+misclassify these individuals as low-risk.
+
+Key observations:
+- Hypertension and dyslipidaemia drive most of the MUNW burden, consistent
+  with existing literature.
+- Metabolic syndrome, though requiring five components for its definition,
+  still affects a notable minority of the normal-weight population.
+- Men and women differ in their condition profile, particularly regarding
+  HDL-C thresholds for dyslipidaemia.
+
+---
+
+## Reproducibility
+
+```{r session-info}
+sessionInfo()
+```
