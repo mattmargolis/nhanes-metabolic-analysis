@@ -1,0 +1,6 @@
+df <- readRDS("output/nhanes_metabolic_flagged.rds")
+cat("Sex column class:", class(df$sex), "\n")
+cat("Unique values:\n")
+print(table(df$sex, useNA="always"))
+cat("\nSample t2dm values:\n")
+print(table(df$t2dm, useNA="always"))

@@ -19,6 +19,9 @@ dir.create("output", showWarnings = FALSE)
 df <- df %>%
   mutate(wt_adj = wt_full / 2)
 
+df <- df %>%
+  mutate(sex = factor(sex, levels = c("Male", "Female")))
+
 svy <- svydesign(
   id      = ~sdmvpsu,
   strata  = ~sdmvstra,
@@ -43,9 +46,14 @@ print(prev_table)
 
 # ── 3. Stratify by sex ────────────────────────────────────────────────────────
 cat("\n=== Prevalence by sex ===\n")
-prev_sex <- svyby(~t2dm + hypertension + dyslipidemia + met_syndrome,
-                  ~sex, svy, svymean, na.rm = TRUE)
-print(round(prev_sex * 100, 1))
+for (sx in c("Male", "Female")) {
+  svy_sx <- subset(svy, sex == sx)
+  cat(sprintf("\n%s:\n", sx))
+  for (cond in c("t2dm", "hypertension", "dyslipidemia", "met_syndrome")) {
+    p <- svymean(as.formula(paste0("~", cond)), svy_sx, na.rm = TRUE)
+    cat(sprintf("  %-20s %.1f%%\n", cond, coef(p)[2] * 100))
+  }
+}
 
 # ── 4. Demographic comparison: MUNW vs MHNW ──────────────────────────────────
 svy_munw  <- subset(svy,  any_metabolic == TRUE)

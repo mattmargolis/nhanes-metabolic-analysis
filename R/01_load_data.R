@@ -34,7 +34,7 @@ cycles <- list(
 # HDL   – HDL cholesterol
 # TRIGLY– triglycerides + LDL-C (fasting subsample)
 
-components <- c("DEMO", "BMX", "BPX", "BPQ", "DIQ", "GHB", "GLU",
+components <- c("DEMO", "BMX", "BPQ", "DIQ", "GHB", "GLU",
                 "TCHOL", "HDL", "TRIGLY")
 
 # ── Download all files ───────────────────────────────────────────────────────
@@ -47,6 +47,11 @@ for (sfx in names(cycles)) {
     raw[[key]] <- fetch(key, label)
   }
 }
+
+# ── Blood pressure: BPX_J (auscultatory 2017-18), BPXO_L (oscillometric 2021-22)
+# NHANES changed BP measurement method in 2021-22; file and column names differ.
+raw[["BPX_J"]]  <- fetch("BPX_J",  "2017-2018")
+raw[["BPXO_L"]] <- fetch("BPXO_L", "2021-2022")
 
 # ── Save raw downloads ───────────────────────────────────────────────────────
 dir.create("output", showWarnings = FALSE)
