@@ -29,6 +29,7 @@ cycles <- list(
 # TCHOL  – total cholesterol
 # HDL    – HDL cholesterol
 # TRIGLY – triglycerides + LDL-C (fasting subsample)
+# PAQ    – physical activity questionnaire (vigorous/moderate activity by domain)
 # Blood pressure files are cycle-specific (see below).
 components <- c(
   "DEMO", "BMX", "BPQ", "DIQ", "GHB", "GLU", "TCHOL", "HDL", "TRIGLY"
@@ -50,6 +51,13 @@ for (sfx in names(cycles)) {
 # BPXO_L – oscillometric (2021-2022; CDC changed measurement method)
 raw[["BPX_J"]]  <- fetch("BPX_J",  "2017-2018")
 raw[["BPXO_L"]] <- fetch("BPXO_L", "2021-2022")
+
+# ── Physical activity questionnaire ────────────────────────────────────────
+# Variable names are consistent across cycles J and L.
+# Covers vigorous/moderate activity at work, transport, and recreation,
+# plus daily sedentary time.
+raw[["PAQ_J"]] <- fetch("PAQ_J", "2017-2018")
+raw[["PAQ_L"]] <- fetch("PAQ_L", "2021-2022")
 
 # ── Save raw downloads ─────────────────────────────────────────────────────
 dir.create("output", showWarnings = FALSE)

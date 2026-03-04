@@ -133,6 +133,80 @@ trigly <- dplyr::bind_rows(
 ) |>
   type.convert(as.is = TRUE)
 
+# ── Physical activity questionnaire ────────────────────────────────────────
+# Domains: vigorous work, moderate work, transport (walk/bicycle),
+# vigorous recreation, moderate recreation, sedentary time.
+# CDC codes: 1 = Yes, 2 = No; nhanesA may pre-translate to "Yes"/"No".
+# Variable names are consistent across cycles J and L.
+paq <- bind_cycles("PAQ") |>
+  dplyr::mutate(
+    # Activity participation flags: 1 = Yes, 0 = No / missing
+    vig_work_yes  = dplyr::case_when(
+      PAQ605 %in% c("1", "Yes") ~ 1L, TRUE ~ 0L
+    ),
+    mod_work_yes  = dplyr::case_when(
+      PAQ620 %in% c("1", "Yes") ~ 1L, TRUE ~ 0L
+    ),
+    transport_yes = dplyr::case_when(
+      PAQ635 %in% c("1", "Yes") ~ 1L, TRUE ~ 0L
+    ),
+    vig_rec_yes   = dplyr::case_when(
+      PAQ650 %in% c("1", "Yes") ~ 1L, TRUE ~ 0L
+    ),
+    mod_rec_yes   = dplyr::case_when(
+      PAQ665 %in% c("1", "Yes") ~ 1L, TRUE ~ 0L
+    ),
+    # Minutes per week per domain (days/week × min/day); 0 if "No" for domain
+    vig_work_min_wk  = dplyr::if_else(
+      vig_work_yes  == 1L,
+      suppressWarnings(as.numeric(PAQ610)) * suppressWarnings(as.numeric(PAD615)),
+      0
+    ),
+    mod_work_min_wk  = dplyr::if_else(
+      mod_work_yes  == 1L,
+      suppressWarnings(as.numeric(PAQ625)) * suppressWarnings(as.numeric(PAD630)),
+      0
+    ),
+    transport_min_wk = dplyr::if_else(
+      transport_yes == 1L,
+      suppressWarnings(as.numeric(PAQ640)) * suppressWarnings(as.numeric(PAD645)),
+      0
+    ),
+    vig_rec_min_wk   = dplyr::if_else(
+      vig_rec_yes   == 1L,
+      suppressWarnings(as.numeric(PAQ655)) * suppressWarnings(as.numeric(PAD660)),
+      0
+    ),
+    mod_rec_min_wk   = dplyr::if_else(
+      mod_rec_yes   == 1L,
+      suppressWarnings(as.numeric(PAQ670)) * suppressWarnings(as.numeric(PAD675)),
+      0
+    ),
+    # Totals by intensity (all domains combined)
+    pa_vig_min_wk     = vig_work_min_wk + vig_rec_min_wk,
+    pa_mod_min_wk     = mod_work_min_wk + transport_min_wk + mod_rec_min_wk,
+    # MET-minutes/week (vigorous ≈ 8 METs, moderate ≈ 4 METs)
+    pa_met_min_wk     = (8 * pa_vig_min_wk) + (4 * pa_mod_min_wk),
+    # Moderate-equivalent min/week using 2:1 vigorous-to-moderate equivalency
+    pa_mod_eq_min_wk  = pa_mod_min_wk + (2 * pa_vig_min_wk),
+    # Meets US Physical Activity Guidelines: >=150 mod-equivalent min/week
+    pa_meets_guidelines = pa_mod_eq_min_wk >= 150,
+    # Three-level category (CDC/AHA aligned)
+    pa_category = dplyr::case_when(
+      pa_mod_eq_min_wk <  10  ~ "Inactive",
+      pa_mod_eq_min_wk < 150  ~ "Insufficient",
+      TRUE                    ~ "Active"
+    ) |> factor(levels = c("Inactive", "Insufficient", "Active"), ordered = TRUE),
+    # Sedentary time (min/day)
+    pa_sedentary_min_day = suppressWarnings(as.numeric(PAD680))
+  ) |>
+  dplyr::select(
+    SEQN,
+    pa_vig_min_wk, pa_mod_min_wk, pa_met_min_wk,
+    pa_mod_eq_min_wk, pa_meets_guidelines, pa_category,
+    pa_sedentary_min_day
+  )
+
 # ── Merge all components ───────────────────────────────────────────────────
 nhanes_full <- demo |>
   dplyr::left_join(bmx,    by = "SEQN") |>
@@ -143,7 +217,8 @@ nhanes_full <- demo |>
   dplyr::left_join(glu,    by = "SEQN") |>
   dplyr::left_join(tchol,  by = "SEQN") |>
   dplyr::left_join(hdl,    by = "SEQN") |>
-  dplyr::left_join(trigly, by = "SEQN")
+  dplyr::left_join(trigly, by = "SEQN") |>
+  dplyr::left_join(paq,    by = "SEQN")
 
 message(
   "Merged dataset: ", nrow(nhanes_full),
